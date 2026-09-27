@@ -11,6 +11,8 @@ Usage:
     ghostbill scan --snapshot-days 60  # snapshots older than 60 days
     ghostbill scan --json              # machine-readable output
     ghostbill scan --csv waste.csv     # export for a spreadsheet
+
+Tag a resource with ghostbill-ignore=true to keep it out of the report.
 """
 import argparse
 import csv
@@ -27,7 +29,9 @@ IS_WINDOWS = os.name == "nt"
 AZ_PATH = None
 
 # Common columns every check projects, so output is uniform.
-COLUMNS = "| project name, resourceGroup, subscriptionId, location, id, sku, sizeGb"
+COLUMNS = "| project name, resourceGroup, subscriptionId, location, id, sku, sizeGb, tags"
+
+DEFAULT_IGNORE_TAG = "ghostbill-ignore"
 
 CHECKS = [
     {
@@ -163,6 +167,17 @@ def estimate(check_id, row):
     return None  # App Service plans / load balancers: depends on SKU & rules
 
 
+def is_ignored(row, tag_key):
+    """True if the resource carries an ignore tag, e.g. ghostbill-ignore=true."""
+    tags = row.get("tags")
+    if not isinstance(tags, dict):
+        return False
+    for k, v in tags.items():
+        if k.lower() == tag_key.lower() and str(v).strip().lower() in ("true", "1", "yes"):
+            return True
+    return False
+
+
 # --- Azure CLI plumbing ---
 def fail(msg):
     print(f"error: {msg}", file=sys.stderr)
@@ -290,6 +305,9 @@ def main(argv=None):
         parser.add_argument("--snapshot-days", type=int, default=30,
                             help="Flag snapshots older than this many days (default 30).")
         parser.add_argument("--only", help="Comma-separated checks: " + ",".join(ch["id"] for ch in CHECKS))
+        parser.add_argument("--ignore-tag", default=DEFAULT_IGNORE_TAG, metavar="KEY",
+                            help="Tag key that excludes a resource when set to true "
+                                 f"(default: {DEFAULT_IGNORE_TAG}).")
         parser.add_argument("--json", action="store_true", help="Print JSON instead of a report.")
         parser.add_argument("--csv", metavar="FILE", help="Also write results to a CSV file.")
     a = p.parse_args(argv)
@@ -313,9 +331,17 @@ def main(argv=None):
         except RuntimeError as e:
             print(f"warning: {ch['label']} check failed: {e}", file=sys.stderr)
             rows = []
+        kept, ignored = [], 0
         for r in rows:
+            if is_ignored(r, a.ignore_tag):
+                ignored += 1
+                continue
+            r.pop("tags", None)
             r["estMonthlyUsd"] = estimate(ch["id"], r)
-        findings.append({"id": ch["id"], "label": ch["label"], "tip": ch["tip"], "rows": rows})
+            kept.append(r)
+        if ignored and not a.json:
+            print(c(f"  ({ignored} ignored via '{a.ignore_tag}' tag)", "2"), file=sys.stderr)
+        findings.append({"id": ch["id"], "label": ch["label"], "tip": ch["tip"], "rows": kept})
 
     if a.json:
         print(json.dumps(findings, indent=2))

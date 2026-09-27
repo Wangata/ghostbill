@@ -20,6 +20,9 @@ classifiers = [
     "Topic :: System :: Systems Administration",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
 [project.scripts]
 ghostbill = "ghostbill.cli:main"
 

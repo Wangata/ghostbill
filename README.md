@@ -63,6 +63,10 @@ Check names for `--only`: `disks`, `public_ips`, `snapshots`, `app_service_plans
 
 You can also run it without installing: `python -m ghostbill` from this folder.
 
+## Ignoring resources on purpose
+
+Tag a resource `ghostbill-ignore=true` and it's left out of the report. Use `--ignore-tag <key>` to use a different tag key (e.g. one you already use, like `do-not-report`).
+
 ## Permissions
 
 The **Reader** role on the subscriptions you want to scan is enough.
@@ -70,6 +74,13 @@ The **Reader** role on the subscriptions you want to scan is enough.
 ## About the cost estimates
 
 Estimates use pay-as-you-go list prices for East US. Real prices vary by region, reservations and agreements, so treat them as a way to rank what to clean up first, not as an invoice. Always confirm a resource is unused before deleting it.
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
 
 ## License
 
