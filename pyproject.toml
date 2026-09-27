@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ghostbill"
+version = "0.1.0"
+description = "Find the forgotten Azure resources you're still paying for."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Martin" }]
+requires-python = ">=3.8"
+dependencies = []
+keywords = ["azure", "cloud", "cost", "finops", "cleanup", "cli"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Systems Administration",
+]
+
+[project.scripts]
+ghostbill = "ghostbill.cli:main"
+
+[tool.setuptools]
+packages = ["ghostbill"]
