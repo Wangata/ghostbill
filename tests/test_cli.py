@@ -173,7 +173,7 @@ def test_main_only_invalid_check_exits(stub_preflight):
 
 def test_main_json_reports_estimate(stub_preflight, monkeypatch, capsys):
     rows = [{
-        "name": "disk-1", "resourceGroup": "rg1", "subscriptionId": "sub1",
+        "checkId": "disks", "name": "disk-1", "resourceGroup": "rg1", "subscriptionId": "sub1",
         "location": "eastus", "id": "/subscriptions/sub1/disk-1",
         "sku": "Premium_LRS", "sizeGb": 128, "tags": {},
     }]
@@ -185,14 +185,15 @@ def test_main_json_reports_estimate(stub_preflight, monkeypatch, capsys):
     assert out[0]["id"] == "disks"
     assert out[0]["rows"][0]["estMonthlyUsd"] == 19.71
     assert "tags" not in out[0]["rows"][0]
+    assert "checkId" not in out[0]["rows"][0]
 
 
 def test_main_skips_ignored_resources(stub_preflight, monkeypatch, capsys):
     rows = [
-        {"name": "keep-me", "resourceGroup": "rg1", "subscriptionId": "sub1",
+        {"checkId": "disks", "name": "keep-me", "resourceGroup": "rg1", "subscriptionId": "sub1",
          "location": "eastus", "id": "id-1", "sku": "Premium_LRS", "sizeGb": 128,
          "tags": {}},
-        {"name": "ignore-me", "resourceGroup": "rg1", "subscriptionId": "sub1",
+        {"checkId": "disks", "name": "ignore-me", "resourceGroup": "rg1", "subscriptionId": "sub1",
          "location": "eastus", "id": "id-2", "sku": "Premium_LRS", "sizeGb": 128,
          "tags": {"ghostbill-ignore": "true"}},
     ]
@@ -207,7 +208,7 @@ def test_main_skips_ignored_resources(stub_preflight, monkeypatch, capsys):
 
 def test_main_custom_ignore_tag(stub_preflight, monkeypatch, capsys):
     rows = [{
-        "name": "res-1", "resourceGroup": "rg1", "subscriptionId": "sub1",
+        "checkId": "nics", "name": "res-1", "resourceGroup": "rg1", "subscriptionId": "sub1",
         "location": "eastus", "id": "id-1", "sku": "", "sizeGb": 0,
         "tags": {"do-not-report": "true"},
     }]
@@ -221,7 +222,7 @@ def test_main_custom_ignore_tag(stub_preflight, monkeypatch, capsys):
 
 def test_main_writes_csv(stub_preflight, monkeypatch, tmp_path):
     rows = [{
-        "name": "disk-1", "resourceGroup": "rg1", "subscriptionId": "sub1",
+        "checkId": "disks", "name": "disk-1", "resourceGroup": "rg1", "subscriptionId": "sub1",
         "location": "eastus", "id": "id-1", "sku": "Premium_LRS", "sizeGb": 128,
         "tags": {},
     }]
@@ -232,3 +233,69 @@ def test_main_writes_csv(stub_preflight, monkeypatch, tmp_path):
 
     assert out_path.exists()
     assert "disk-1" in out_path.read_text(encoding="utf-8")
+
+
+def test_main_groups_rows_by_check_id(stub_preflight, monkeypatch, capsys):
+    rows = [
+        {"checkId": "disks", "name": "disk-1", "resourceGroup": "rg1", "subscriptionId": "sub1",
+         "location": "eastus", "id": "id-1", "sku": "Premium_LRS", "sizeGb": 128, "tags": {}},
+        {"checkId": "public_ips", "name": "ip-1", "resourceGroup": "rg1", "subscriptionId": "sub1",
+         "location": "eastus", "id": "id-2", "sku": "Standard", "sizeGb": 0, "tags": {}},
+    ]
+    monkeypatch.setattr(cli, "run_query", lambda query, subs: rows)
+
+    cli.main(["scan", "--only", "disks,public_ips", "--json"])
+
+    out = json.loads(capsys.readouterr().out)
+    by_id = {f["id"]: [r["name"] for r in f["rows"]] for f in out}
+    assert by_id == {"disks": ["disk-1"], "public_ips": ["ip-1"]}
+
+
+def test_main_ignores_rows_with_unknown_check_id(stub_preflight, monkeypatch, capsys):
+    rows = [{"checkId": "some_future_check", "name": "x", "tags": {}}]
+    monkeypatch.setattr(cli, "run_query", lambda query, subs: rows)
+
+    cli.main(["scan", "--only", "disks", "--json"])
+
+    out = json.loads(capsys.readouterr().out)
+    assert out[0]["rows"] == []
+
+
+def test_main_exits_when_query_fails(stub_preflight, monkeypatch):
+    def boom(query, subs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "run_query", boom)
+    with pytest.raises(SystemExit):
+        cli.main(["scan", "--only", "disks"])
+
+
+# ---------------------------------------------------------------------------
+# build_query()
+# ---------------------------------------------------------------------------
+
+def test_build_query_unions_checks_with_check_id():
+    checks = [ch for ch in cli.CHECKS if ch["id"] in ("disks", "public_ips")]
+    query = cli.build_query(checks, 30)
+
+    assert query.startswith("union (")
+    assert "checkId = 'disks'" in query
+    assert "checkId = 'public_ips'" in query
+    assert "project checkId, name, resourceGroup" in query
+    assert query.count("(") == query.count(")")
+
+
+def test_build_query_substitutes_snapshot_days():
+    checks = [ch for ch in cli.CHECKS if ch["id"] == "snapshots"]
+    query = cli.build_query(checks, 90)
+
+    assert "ago(90d)" in query
+    assert "{days}" not in query
+
+
+def test_build_query_single_check_is_valid_union():
+    checks = [ch for ch in cli.CHECKS if ch["id"] == "disks"]
+    query = cli.build_query(checks, 30)
+
+    assert query.count("checkId = 'disks'") == 1
+    assert query.count("(") == query.count(")")
