@@ -1,5 +1,9 @@
 # 👻 Ghostbill
 
+[![CI](https://github.com/Wangata/ghostbill/actions/workflows/python-package.yml/badge.svg)](https://github.com/Wangata/ghostbill/actions/workflows/python-package.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.8%2B-blue)
+
 **Find the forgotten Azure resources you're still paying for.**
 
 Deleted a VM but not its disk? Tore down a test environment but left the public IP? Those leftovers keep billing every month. Ghostbill finds them across all your subscriptions in seconds and tells you roughly what they cost.
@@ -23,6 +27,10 @@ App Service plans with no apps (1)
 5 orphaned resources, est. ~$45.12/month (~$541/year) in known costs.
 ```
 
+## Why it exists
+
+Cloud bills grow quietly. Resources left behind after a teardown or a migration rarely show up in anyone's backlog, but they bill every month. Ghostbill gives you a ranked list to clean up, without touching anything itself.
+
 ## What it checks
 
 | Check | Costs money? |
@@ -37,6 +45,10 @@ App Service plans with no apps (1)
 | Empty resource groups | No, clutter |
 
 Ghostbill is **read-only**. It never changes or deletes anything.
+
+## How it works
+
+Ghostbill uses the Azure CLI's [Resource Graph](https://learn.microsoft.com/azure/governance/resource-graph/) extension. All checks are combined into a single union query per run, so scanning many subscriptions stays fast. It then applies list prices to estimate cost.
 
 ## Install
 
@@ -81,6 +93,8 @@ Estimates use pay-as-you-go list prices for East US. Real prices vary by region,
 pip install -e ".[dev]"
 pytest
 ```
+
+Tests run automatically on every push through GitHub Actions.
 
 ## License
 
